@@ -1,0 +1,49 @@
+{
+    --------------------------------------------
+    Filename: SHTC3-Test.spin2
+    Author:
+    Description:
+    Copyright (c) 2020
+    Started MMM DD, YYYY
+    Updated MMM DD, YYYY
+    See end of file for terms of use.
+    --------------------------------------------
+}
+CON
+
+    _xtlfreq    = cfg._xtlfreq
+    _clkfreq    = cfg._clkfreq_def
+
+    LED         = cfg.LED1
+    SER_RX      = cfg.SER_RX
+    SER_TX      = cfg.SER_TX
+    SER_BAUD    = 2_000_000
+
+OBJ
+
+    ser         : "com.serial.terminal.ansi"
+    cfg         : "core.con.boardcfg.p2eval"
+    io          : "io"
+    time        : "time"
+
+VAR
+
+    long _ser_cog
+
+PUB Main()
+
+    Setup()
+
+'   Your
+'   Code
+'   Here
+
+    FlashLED(LED, 100)     ' Signal execution finished
+
+PUB Setup()
+
+    repeat until _ser_cog := ser.startrxtx (SER_RX, SER_TX, 0, SER_BAUD)
+    ser.clear()
+    ser.printf("Serial terminal started\n")
+
+#include "lib.utility.spin2"
