@@ -69,6 +69,25 @@ PUB DeviceID{}: id
 ' Read device identification
     readreg(core#DEVID, 2, @id)
 
+PUB Humidity{}: rh | tmp
+' Current Relative Humidity, in hundredths of a percent
+'   Returns: Integer
+'   (e.g., 4762 is equivalent to 47.62%)
+    rh := 0
+    writereg(core#WAKEUP, 0, 0)                             ' Wake the sensor up
+
+    if _opmode == NORMAL                                    ' Take a measurement
+        readreg(core#NML_RHFIRST, 3, @tmp)
+    elseif _opmode == LOWPOWER
+        readreg(core#LP_RHFIRST, 3, @tmp)
+
+    writereg(core#SLEEP, 0, 0)                              ' Go back to sleep
+
+    rh.byte[0] := tmp.byte[1]
+    rh.byte[1] := tmp.byte[0]
+
+    rh := calcRH(rh)
+
 PUB OpMode(mode): curr_mode
 ' Set device operating mode
 '   Valid values: NORMAL (0), LOWPOWER (1)
@@ -114,6 +133,10 @@ PUB TempScale(scale): curr_scale
             _temp_scale := scale
         OTHER:
             return _temp_scale
+
+PRI calcRH(rh_word): rh_cal
+
+    return (rh_word * 100_00) / 65535
 
 PRI calcTemp(temp_word): temp_cal
 
