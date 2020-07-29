@@ -40,6 +40,7 @@ PUB Main{} | t
     ser.newline{}
     t := 0
     shtc3.tempscale(0)
+    shtc3.opmode(1)
     repeat
         ser.position(0, 5)
         t := shtc3.temperature

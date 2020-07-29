@@ -21,7 +21,7 @@ CON
     I2C_MAX_FREQ        = core#I2C_MAX_FREQ
 
 ' Operating modes
-    NORM                = 0
+    NORMAL              = 0
     LOWPOWER            = 1
 
 ' Temperature scales
@@ -35,13 +35,13 @@ VAR
 OBJ
 
     i2c : "com.i2c"                                             'PASM I2C Driver
-    core: "core.con.shtc3.spin"                       'File containing your device's register set
-    time: "time"                                                'Basic timing functions
+    core: "core.con.shtc3.spin"
+    time: "time"
 
 PUB Null{}
 ''This is not a top-level object
 
-PUB Start: okay                                                 'Default to "standard" Propeller I2C pins and 400kHz
+PUB Start: okay                                                 'Default to "standard" Propeller I2C pins and 100kHz
 
     okay := Startx (DEF_SCL, DEF_SDA, DEF_HZ)
 
@@ -67,12 +67,14 @@ PUB Defaults{}
 
 PUB DeviceID{}: id
 ' Read device identification
-    readReg(core#DEVID, 2, @id)
+    readreg(core#DEVID, 2, @id)
 
 PUB OpMode(mode): curr_mode
-
+' Set device operating mode
+'   Valid values: NORMAL (0), LOWPOWER (1)
+'   Any other value returns the current setting
     case mode
-        NORM, LOWPOWER:
+        NORMAL, LOWPOWER:
             _opmode := mode
         OTHER:
             return _opmode
@@ -87,9 +89,14 @@ PUB Temperature{}: deg | tmp
 '   Returns: Integer
 '   (e.g., 2105 is equivalent to 21.05 deg C)
     deg := 0
-    writereg(core#WAKEUP, 0, 0)
-    readreg(core#NML_TEMPFIRST, 3, @tmp)
-    writereg(core#SLEEP, 0, 0)
+    writereg(core#WAKEUP, 0, 0)                             ' Wake the sensor up
+
+    if _opmode == NORMAL                                    ' Take a measurement
+        readreg(core#NML_TEMPFIRST, 3, @tmp)
+    elseif _opmode == LOWPOWER
+        readreg(core#LP_TEMPFIRST, 3, @tmp)
+
+    writereg(core#SLEEP, 0, 0)                              ' Go back to sleep
 
     deg.byte[0] := tmp.byte[1]
     deg.byte[1] := tmp.byte[0]
@@ -97,7 +104,11 @@ PUB Temperature{}: deg | tmp
     deg := calcTemp(deg)
 
 PUB TempScale(scale): curr_scale
-
+' Set temperature scale used by Temperature method
+'   Valid values:
+'       C (0): Celsius
+'       F (1): Fahrenheit
+'   Any other value returns the current setting
     case scale
         C, F:
             _temp_scale := scale
