@@ -24,9 +24,13 @@ CON
     NORM                = 0
     LOWPOWER            = 1
 
+' Temperature scales
+    C                   = 0
+    F                   = 1
+
 VAR
 
-    byte _opmode
+    byte _opmode, _temp_scale
 
 OBJ
 
@@ -46,8 +50,9 @@ PUB Startx(SCL_PIN, SDA_PIN, I2C_HZ): okay
     if lookdown(SCL_PIN: 0..31) and lookdown(SDA_PIN: 0..31)
         if I2C_HZ =< core#I2C_MAX_FREQ
             if okay := i2c.setupx (SCL_PIN, SDA_PIN, I2C_HZ)    'I2C Object Started?
-                time.msleep (1)
+                time.usleep (240)
                 if i2c.present (SLAVE_WR)                       'Response from device?
+                    reset{}
                     if deviceid{}
                         return okay
 
@@ -75,21 +80,41 @@ PUB OpMode(mode): curr_mode
 PUB Reset{}
 ' Reset the device
     writereg(core#RESET, 0, 0)
+    time.usleep(240)
 
 PUB Temperature{}: deg | tmp
-
+' Current Temperature, in hundredths of a degree
+'   Returns: Integer
+'   (e.g., 2105 is equivalent to 21.05 deg C)
     deg := 0
     writereg(core#WAKEUP, 0, 0)
-    time.usleep(240)
     readreg(core#NML_TEMPFIRST, 3, @tmp)
     writereg(core#SLEEP, 0, 0)
 
     deg.byte[0] := tmp.byte[1]
     deg.byte[1] := tmp.byte[0]
 
+    deg := calcTemp(deg)
+
 PUB TempScale(scale): curr_scale
 
-PRI readReg(reg_nr, nr_bytes, buff_addr) | cmd_packet, tmp, ackbit, t
+    case scale
+        C, F:
+            _temp_scale := scale
+        OTHER:
+            return _temp_scale
+
+PRI calcTemp(temp_word): temp_cal
+
+    case _temp_scale
+        C:
+            return ((175 * (temp_word * 100)) / 65535)-45_00
+        F:
+            return ((315 * (temp_word * 100)) / 65535)-49_00
+        OTHER:
+            return FALSE
+
+PRI readReg(reg_nr, nr_bytes, buff_addr) | cmd_packet, tmp, ackbit
 '' Read num_bytes from the slave device into the address stored in buff_addr
     case reg_nr                                             ' Basic register validation
         $401A, $58E0, $609C, $7866:                         ' without clock-stretching
@@ -101,7 +126,6 @@ PRI readReg(reg_nr, nr_bytes, buff_addr) | cmd_packet, tmp, ackbit, t
             i2c.wr_block (@cmd_packet, 3)
             i2c.stop{}
 
-            t := 0
             repeat
                 i2c.start{}
                 ackbit := i2c.write(SLAVE_RD)

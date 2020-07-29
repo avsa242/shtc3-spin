@@ -39,10 +39,11 @@ PUB Main{} | t
     ser.hex(shtc3.deviceid{}, 8)
     ser.newline{}
     t := 0
+    shtc3.tempscale(0)
     repeat
         ser.position(0, 5)
         t := shtc3.temperature
-        ser.hex(t, 8)
+        ser.dec(t)
         time.msleep(100)
 
 PUB Setup{}
