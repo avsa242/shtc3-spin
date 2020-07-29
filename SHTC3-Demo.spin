@@ -33,12 +33,17 @@ OBJ
     time    : "time"
     shtc3   : "sensor.temp_rh.shtc3.i2c"
 
-PUB Main{}
+PUB Main{} | t
 
     setup{}
     ser.hex(shtc3.deviceid{}, 8)
     ser.newline{}
+    t := 0
     repeat
+        ser.position(0, 5)
+        t := shtc3.temperature
+        ser.hex(t, 8)
+        time.msleep(100)
 
 PUB Setup{}
 

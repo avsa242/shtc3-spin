@@ -12,16 +12,21 @@
 
 CON
 
-    SLAVE_WR          = core#SLAVE_ADDR
-    SLAVE_RD          = core#SLAVE_ADDR|1
+    SLAVE_WR            = core#SLAVE_ADDR
+    SLAVE_RD            = core#SLAVE_ADDR|1
 
-    DEF_SCL           = 28
-    DEF_SDA           = 29
-    DEF_HZ            = 100_000
-    I2C_MAX_FREQ      = core#I2C_MAX_FREQ
+    DEF_SCL             = 28
+    DEF_SDA             = 29
+    DEF_HZ              = 100_000
+    I2C_MAX_FREQ        = core#I2C_MAX_FREQ
+
+' Operating modes
+    NORM                = 0
+    LOWPOWER            = 1
 
 VAR
 
+    byte _opmode
 
 OBJ
 
@@ -29,7 +34,7 @@ OBJ
     core: "core.con.shtc3.spin"                       'File containing your device's register set
     time: "time"                                                'Basic timing functions
 
-PUB Null
+PUB Null{}
 ''This is not a top-level object
 
 PUB Start: okay                                                 'Default to "standard" Propeller I2C pins and 400kHz
@@ -41,9 +46,9 @@ PUB Startx(SCL_PIN, SDA_PIN, I2C_HZ): okay
     if lookdown(SCL_PIN: 0..31) and lookdown(SDA_PIN: 0..31)
         if I2C_HZ =< core#I2C_MAX_FREQ
             if okay := i2c.setupx (SCL_PIN, SDA_PIN, I2C_HZ)    'I2C Object Started?
-                time.MSleep (1)
+                time.msleep (1)
                 if i2c.present (SLAVE_WR)                       'Response from device?
-                    if DeviceID{}
+                    if deviceid{}
                         return okay
 
     return FALSE                                                'If we got here, something went wrong
@@ -59,10 +64,32 @@ PUB DeviceID{}: id
 ' Read device identification
     readReg(core#DEVID, 2, @id)
 
+PUB OpMode(mode): curr_mode
+
+    case mode
+        NORM, LOWPOWER:
+            _opmode := mode
+        OTHER:
+            return _opmode
+
 PUB Reset{}
 ' Reset the device
+    writereg(core#RESET, 0, 0)
 
-PRI readReg(reg_nr, nr_bytes, buff_addr) | cmd_packet, tmp
+PUB Temperature{}: deg | tmp
+
+    deg := 0
+    writereg(core#WAKEUP, 0, 0)
+    time.usleep(240)
+    readreg(core#NML_TEMPFIRST, 3, @tmp)
+    writereg(core#SLEEP, 0, 0)
+
+    deg.byte[0] := tmp.byte[1]
+    deg.byte[1] := tmp.byte[0]
+
+PUB TempScale(scale): curr_scale
+
+PRI readReg(reg_nr, nr_bytes, buff_addr) | cmd_packet, tmp, ackbit, t
 '' Read num_bytes from the slave device into the address stored in buff_addr
     case reg_nr                                             ' Basic register validation
         $401A, $58E0, $609C, $7866:                         ' without clock-stretching
@@ -70,27 +97,45 @@ PRI readReg(reg_nr, nr_bytes, buff_addr) | cmd_packet, tmp
             cmd_packet.byte[1] := reg_nr.byte[1]
             cmd_packet.byte[2] := reg_nr.byte[0]
 
-            i2c.start{}
+            i2c.start{}                                     ' Send measurement command
             i2c.wr_block (@cmd_packet, 3)
             i2c.stop{}
-            'xxx wakeup time
+
+            t := 0
             repeat
                 i2c.start{}
-                if i2c.write (SLAVE_RD) == i2c#ACK
-                    quit
-                i2c.stop{}
-
+                ackbit := i2c.write(SLAVE_RD)
+                ' XXX Datasheet shows a stop condition here, then a restart before the below read
+                '   but no data is returned when writing the routine that way
+            while ackbit == i2c#NAK
             i2c.rd_block (buff_addr, nr_bytes, TRUE)
             i2c.stop{}
-        $44DE, $5C24, $6458, $7CA2:                         ' with clock-stretching
+            time.msleep(1)
 
-        $EFC8:
+        $44DE, $5C24, $6458, $7CA2:                         ' with clock-stretching
+            cmd_packet.byte[0] := SLAVE_WR
+            cmd_packet.byte[1] := reg_nr.byte[1]
+            cmd_packet.byte[2] := reg_nr.byte[0]
+
+            i2c.start{}                                     ' Send measurement command
+            i2c.wr_block (@cmd_packet, 3)
+            i2c.stop{}
+
+            time.msleep(13)
+            i2c.start{}                                     ' I2C driver waits for SCL to be released
+            i2c.write(SLAVE_RD)
+            i2c.rd_block (buff_addr, nr_bytes, TRUE)
+            i2c.stop{}
+
+        core#DEVID:
             cmd_packet.byte[0] := SLAVE_WR
             cmd_packet.byte[1] := reg_nr.byte[1]
             cmd_packet.byte[2] := reg_nr.byte[0]
 
             i2c.start{}
             i2c.wr_block (@cmd_packet, 3)
+            i2c.stop{}
+
             i2c.start{}
             i2c.write(SLAVE_RD)
             i2c.rd_block(buff_addr, 3, TRUE)
@@ -102,14 +147,12 @@ PRI readReg(reg_nr, nr_bytes, buff_addr) | cmd_packet, tmp
 PRI writeReg(reg_nr, nr_bytes, buff_addr) | cmd_packet, tmp
 '' Write num_bytes to the slave device from the address stored in buff_addr
     case reg_nr
-        $3517, $805D, $B098:
+        core#WAKEUP, core#RESET, core#SLEEP:
             cmd_packet.byte[0] := SLAVE_WR
             cmd_packet.byte[1] := reg_nr.byte[1]
             cmd_packet.byte[2] := reg_nr.byte[0]
             i2c.start{}
-            i2c.wr_block (@cmd_packet, 2)
-            repeat tmp from 0 to nr_bytes-1
-                i2c.write (byte[buff_addr][tmp])
+            i2c.wr_block (@cmd_packet, 3)
             i2c.stop{}
         OTHER:
             return
