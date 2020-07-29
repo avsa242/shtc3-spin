@@ -53,7 +53,7 @@ PUB Startx(SCL_PIN, SDA_PIN, I2C_HZ): okay
                 time.usleep (240)
                 if i2c.present (SLAVE_WR)                       'Response from device?
                     reset{}
-                    if deviceid{}
+                    if deviceid{}' == $0807
                         return okay
 
     return FALSE                                                'If we got here, something went wrong
@@ -67,7 +67,13 @@ PUB Defaults{}
 
 PUB DeviceID{}: id
 ' Read device identification
+'   Returns: $0807
     readreg(core#DEVID, 2, @id)
+    id.byte[3] := id.byte[0]
+    id.byte[0] := id.byte[1]
+    id.byte[1] := id.byte[3]
+    id.byte[3] := 0
+    id &= $083F
 
 PUB Humidity{}: rh | tmp
 ' Current Relative Humidity, in hundredths of a percent
