@@ -1,11 +1,12 @@
 {
     --------------------------------------------
     Filename: sensor.temp_rh.shtc3.i2c.spin
-    Author:
-    Description:
-    Copyright (c) 2020
+    Author: Jesse Burt
+    Description: Driver for the Sensirion SHT-C3
+        Temperature/RH sensor
+    Copyright (c) 2021
     Started Jul 27, 2020
-    Updated Jul 27, 2020
+    Updated Feb 15, 2021
     See end of file for terms of use.
     --------------------------------------------
 }
@@ -39,28 +40,30 @@ OBJ
     time: "time"
 
 PUB Null{}
-''This is not a top-level object
+' This is not a top-level object
 
-PUB Start: okay                                                 'Default to "standard" Propeller I2C pins and 100kHz
+PUB Start{}: status
+' Start using "standard" Propeller I2C pins and 100kHz
+    return startx(DEF_SCL, DEF_SDA, DEF_HZ)
 
-    okay := Startx (DEF_SCL, DEF_SDA, DEF_HZ)
-
-PUB Startx(SCL_PIN, SDA_PIN, I2C_HZ): okay
-
-    if lookdown(SCL_PIN: 0..31) and lookdown(SDA_PIN: 0..31)
-        if I2C_HZ =< core#I2C_MAX_FREQ
-            if okay := i2c.setupx (SCL_PIN, SDA_PIN, I2C_HZ)    'I2C Object Started?
-                time.usleep (240)
-                if i2c.present (SLAVE_WR)                       'Response from device?
-                    reset{}
-                    if deviceid{}' == $0807
-                        return okay
-
-    return FALSE                                                'If we got here, something went wrong
+PUB Startx(SCL_PIN, SDA_PIN, I2C_HZ): status
+' Start using custom I/O settings and I2C bus speed
+    if lookdown(SCL_PIN: 0..31) and lookdown(SDA_PIN: 0..31) and {
+}   I2C_HZ =< core#I2C_MAX_FREQ
+        if (status := i2c.init(SCL_PIN, SDA_PIN, I2C_HZ))
+            time.usleep(core#T_POR)             ' wait for device startup
+            if i2c.present(SLAVE_WR)            ' test device bus presence
+                reset{}
+                if deviceid{} == core#DEVID_RESP' validate device
+                    return status
+    ' if this point is reached, something above failed
+    ' Double check I/O pin assignments, connections, power
+    ' Lastly - make sure you have at least one free core/cog
+    return FALSE
 
 PUB Stop{}
-' Put any other housekeeping code here required/recommended by your device before shutting down
-    i2c.terminate
+
+    i2c.deinit{}
 
 PUB Defaults{}
 ' Set factory defaults
@@ -73,26 +76,30 @@ PUB DeviceID{}: id
     id.byte[0] := id.byte[1]
     id.byte[1] := id.byte[3]
     id.byte[3] := 0
-    id &= $083F
+    id &= $083F                                 ' only some bits are relevant
+
+PUB HumData{}: rh_adc | tmp
+' Read relative humidity data
+'   Returns: u16
+    rh_adc := 0
+    writereg(core#WAKEUP, 0, 0)                 ' Wake the sensor up
+    time.usleep(core#T_POR)
+
+    if _opmode == NORMAL                        ' Take a measurement
+        readreg(core#NML_RHFIRST_CS, 3, @tmp)
+    elseif _opmode == LOWPOWER
+        readreg(core#LP_RHFIRST_CS, 3, @tmp)
+
+    writereg(core#SLEEP, 0, 0)                  ' Go back to sleep
+
+    rh_adc.byte[0] := tmp.byte[1]
+    rh_adc.byte[1] := tmp.byte[0]
 
 PUB Humidity{}: rh | tmp
 ' Current Relative Humidity, in hundredths of a percent
 '   Returns: Integer
 '   (e.g., 4762 is equivalent to 47.62%)
-    rh := 0
-    writereg(core#WAKEUP, 0, 0)                             ' Wake the sensor up
-
-    if _opmode == NORMAL                                    ' Take a measurement
-        readreg(core#NML_RHFIRST, 3, @tmp)
-    elseif _opmode == LOWPOWER
-        readreg(core#LP_RHFIRST, 3, @tmp)
-
-    writereg(core#SLEEP, 0, 0)                              ' Go back to sleep
-
-    rh.byte[0] := tmp.byte[1]
-    rh.byte[1] := tmp.byte[0]
-
-    rh := calcRH(rh)
+    rh := calcrh(humdata{})
 
 PUB OpMode(mode): curr_mode
 ' Set device operating mode
@@ -101,32 +108,37 @@ PUB OpMode(mode): curr_mode
     case mode
         NORMAL, LOWPOWER:
             _opmode := mode
-        OTHER:
+        other:
             return _opmode
 
 PUB Reset{}
 ' Reset the device
-    writereg(core#RESET, 0, 0)
-    time.usleep(240)
+    writereg(core#WAKEUP, 0, 0)                 ' avoid NAK from sensor when
+    writereg(core#RESET, 0, 0)                  '   sending reset
+    time.usleep(core#T_POR)
 
-PUB Temperature{}: deg | tmp
+PUB TempData{}: temp_adc | tmp
+' Read temperature data
+'   Returns: s16
+    temp_adc := 0
+    writereg(core#WAKEUP, 0, 0)                 ' Wake the sensor up
+    time.usleep(core#T_POR)
+
+    if _opmode == NORMAL                        ' Take a measurement
+        readreg(core#NML_TEMPFIRST_CS, 3, @tmp)
+    elseif _opmode == LOWPOWER
+        readreg(core#LP_TEMPFIRST_CS, 3, @tmp)
+
+    writereg(core#SLEEP, 0, 0)                  ' Go back to sleep
+
+    temp_adc.byte[0] := tmp.byte[1]
+    temp_adc.byte[1] := tmp.byte[0]
+
+PUB Temperature{}: deg
 ' Current Temperature, in hundredths of a degree
 '   Returns: Integer
 '   (e.g., 2105 is equivalent to 21.05 deg C)
-    deg := 0
-    writereg(core#WAKEUP, 0, 0)                             ' Wake the sensor up
-
-    if _opmode == NORMAL                                    ' Take a measurement
-        readreg(core#NML_TEMPFIRST, 3, @tmp)
-    elseif _opmode == LOWPOWER
-        readreg(core#LP_TEMPFIRST, 3, @tmp)
-
-    writereg(core#SLEEP, 0, 0)                              ' Go back to sleep
-
-    deg.byte[0] := tmp.byte[1]
-    deg.byte[1] := tmp.byte[0]
-
-    deg := calcTemp(deg)
+    return calctemp(tempdata{})
 
 PUB TempScale(scale): curr_scale
 ' Set temperature scale used by Temperature method
@@ -137,7 +149,7 @@ PUB TempScale(scale): curr_scale
     case scale
         C, F:
             _temp_scale := scale
-        OTHER:
+        other:
             return _temp_scale
 
 PRI calcRH(rh_word): rh_cal
@@ -151,74 +163,66 @@ PRI calcTemp(temp_word): temp_cal
             return ((175 * (temp_word * 100)) / 65535)-45_00
         F:
             return ((315 * (temp_word * 100)) / 65535)-49_00
-        OTHER:
+        other:
             return FALSE
 
-PRI readReg(reg_nr, nr_bytes, buff_addr) | cmd_packet, tmp, ackbit
-'' Read num_bytes from the slave device into the address stored in buff_addr
-    case reg_nr                                             ' Basic register validation
-        $401A, $58E0, $609C, $7866:                         ' without clock-stretching
-            cmd_packet.byte[0] := SLAVE_WR
-            cmd_packet.byte[1] := reg_nr.byte[1]
-            cmd_packet.byte[2] := reg_nr.byte[0]
+PRI readReg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt, tmp, ackbit
+' Read nr_bytes from the slave device into ptr_buff
+    case reg_nr                                 ' validate reg num
+        $44DE, $5C24, $6458, $7CA2:             ' meas. with clock-stretching
+            cmd_pkt.byte[0] := SLAVE_WR
+            cmd_pkt.byte[1] := reg_nr.byte[1]
+            cmd_pkt.byte[2] := reg_nr.byte[0]
 
-            i2c.start{}                                     ' Send measurement command
-            i2c.wr_block (@cmd_packet, 3)
+            i2c.start{}                         ' Send measurement command
+            i2c.wrblock_lsbf(@cmd_pkt, 3)
             i2c.stop{}
 
-            repeat
-                i2c.start{}
-                ackbit := i2c.write(SLAVE_RD)
-                ' XXX Datasheet shows a stop condition here, then a restart before the below read
-                '   but no data is returned when writing the routine that way
-            while ackbit == i2c#NAK
-            i2c.rd_block (buff_addr, nr_bytes, TRUE)
+            i2c.start{}                         ' read measurement
+            i2c.write(SLAVE_RD)
+            i2c.rdblock_lsbf(ptr_buff, nr_bytes, i2c#NAK)
+            i2c.stop{}
+        $401A, $58E0, $609C, $7866:             ' meas. without clock-stretch
+            cmd_pkt.byte[0] := SLAVE_WR
+            cmd_pkt.byte[1] := reg_nr.byte[1]
+            cmd_pkt.byte[2] := reg_nr.byte[0]
+
+            i2c.start{}
+            i2c.wrblock_lsbf(@cmd_pkt, 3)
+            i2c.stop{}
+
+            i2c.wait(SLAVE_RD)
+            i2c.rdblock_lsbf(ptr_buff, nr_bytes, i2c#NAK)
             i2c.stop{}
             time.msleep(1)
-
-        $44DE, $5C24, $6458, $7CA2:                         ' with clock-stretching
-            cmd_packet.byte[0] := SLAVE_WR
-            cmd_packet.byte[1] := reg_nr.byte[1]
-            cmd_packet.byte[2] := reg_nr.byte[0]
-
-            i2c.start{}                                     ' Send measurement command
-            i2c.wr_block (@cmd_packet, 3)
-            i2c.stop{}
-
-            time.msleep(13)
-            i2c.start{}                                     ' I2C driver waits for SCL to be released
-            i2c.write(SLAVE_RD)
-            i2c.rd_block (buff_addr, nr_bytes, TRUE)
-            i2c.stop{}
-
         core#DEVID:
-            cmd_packet.byte[0] := SLAVE_WR
-            cmd_packet.byte[1] := reg_nr.byte[1]
-            cmd_packet.byte[2] := reg_nr.byte[0]
+            cmd_pkt.byte[0] := SLAVE_WR
+            cmd_pkt.byte[1] := reg_nr.byte[1]
+            cmd_pkt.byte[2] := reg_nr.byte[0]
 
             i2c.start{}
-            i2c.wr_block (@cmd_packet, 3)
+            i2c.wrblock_lsbf(@cmd_pkt, 3)
             i2c.stop{}
 
             i2c.start{}
             i2c.write(SLAVE_RD)
-            i2c.rd_block(buff_addr, 3, TRUE)
+            i2c.rdblock_lsbf(ptr_buff, 3, i2c#NAK)
             i2c.stop{}
 
-        OTHER:
+        other:
             return
 
-PRI writeReg(reg_nr, nr_bytes, buff_addr) | cmd_packet, tmp
-'' Write num_bytes to the slave device from the address stored in buff_addr
+PRI writeReg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt, tmp
+' Write nr_bytes to the slave device from ptr_buff
     case reg_nr
         core#WAKEUP, core#RESET, core#SLEEP:
-            cmd_packet.byte[0] := SLAVE_WR
-            cmd_packet.byte[1] := reg_nr.byte[1]
-            cmd_packet.byte[2] := reg_nr.byte[0]
+            cmd_pkt.byte[0] := SLAVE_WR
+            cmd_pkt.byte[1] := reg_nr.byte[1]
+            cmd_pkt.byte[2] := reg_nr.byte[0]
             i2c.start{}
-            i2c.wr_block (@cmd_packet, 3)
+            i2c.wrblock_lsbf(@cmd_pkt, 3)
             i2c.stop{}
-        OTHER:
+        other:
             return
 
 

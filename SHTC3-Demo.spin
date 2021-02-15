@@ -1,11 +1,11 @@
 {
     --------------------------------------------
-    Filename: SHTC3-Test.spin
-    Author:
-    Description:
-    Copyright (c) 2020
+    Filename: SHTC3-Demo.spin
+    Author: Jesse Burt
+    Description: Demo of the SHTC3 driver
+    Copyright (c) 2021
     Started Jul 27, 2020
-    Updated Jul 27, 2020
+    Updated Feb 15, 2021
     See end of file for terms of use.
     --------------------------------------------
 }
@@ -16,15 +16,16 @@ CON
     _xinfreq    = cfg#_xinfreq
 
 ' -- User-modifiable constants
-    SER_RX      = 31
-    SER_TX      = 30
-    SER_BAUD    = 115_200
     LED         = cfg#LED1
+    SER_BAUD    = 115_200
 
-    I2C_SCL     = 28
-    I2C_SDA     = 29
-    I2C_HZ      = 1_000_000
+    SCL_PIN     = 28
+    SDA_PIN     = 29
+    I2C_HZ      = 1_000_000                     ' max is 1_000_000
 ' --
+
+    C           = 0
+    F           = 1
 
 OBJ
 
@@ -32,38 +33,66 @@ OBJ
     ser     : "com.serial.terminal.ansi"
     time    : "time"
     shtc3   : "sensor.temp_rh.shtc3.i2c"
+    int     : "string.integer"
 
-PUB Main{} | t, h
+PUB Main{}
 
     setup{}
-    ser.hex(shtc3.deviceid{}, 8)
-    ser.newline{}
-    t := 0
-    shtc3.tempscale(0)
-    shtc3.opmode(1)
+
+    shtc3.tempscale(C)
+
     repeat
-        ser.position(0, 5)
-        t := shtc3.temperature
-        h := shtc3.humidity
-        ser.dec(t)
-        ser.newline
-        ser.dec(h)
-        time.msleep(100)
+        ser.position(0, 3)
+
+        ser.str(string("Temperature: "))
+        decimal(shtc3.temperature{}, 100)
+        ser.newline{}
+
+        ser.str(string("Relative humidity: "))
+        decimal(shtc3.humidity{}, 100)
+        ser.newline{}
+
+        time.msleep(1000)
+
+PRI Decimal(scaled, divisor) | whole[4], part[4], places, tmp, sign
+' Display a scaled up number as a decimal
+'   Scale it back down by divisor (e.g., 10, 100, 1000, etc)
+    whole := scaled / divisor
+    tmp := divisor
+    places := 0
+    part := 0
+    sign := 0
+    if scaled < 0
+        sign := "-"
+    else
+        sign := " "
+
+    repeat
+        tmp /= 10
+        places++
+    until tmp == 1
+    scaled //= divisor
+    part := int.deczeroed(||(scaled), places)
+
+    ser.char(sign)
+    ser.dec(||(whole))
+    ser.char(".")
+    ser.str(part)
 
 PUB Setup{}
 
-    repeat until ser.startrxtx(SER_RX, SER_TX, 0, SER_BAUD)
+    ser.start(SER_BAUD)
     time.msleep(30)
     ser.clear{}
-    ser.str(string("Serial terminal started", ser#CR, ser#LF))
-    if shtc3.startx(I2C_SCL, I2C_SDA, I2C_HZ)
-        ser.str(string("SHTC3 driver started", ser#CR, ser#LF))
+    ser.strln(string("Serial terminal started"))
+    if shtc3.startx(SCL_PIN, SDA_PIN, I2C_HZ)
+        ser.strln(string("SHTC3 driver started"))
     else
-        ser.str(string("SHTC3 driver failed to start - halting", ser#CR, ser#LF))
+        ser.strln(string("SHTC3 driver failed to start - halting"))
         shtc3.stop{}
         time.msleep(30)
         ser.stop{}
-
+        repeat
 
 DAT
 {

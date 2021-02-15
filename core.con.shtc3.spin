@@ -1,11 +1,11 @@
 {
     --------------------------------------------
     Filename: core.con.shtc3.spin
-    Author:
-    Description:
-    Copyright (c) 2020
+    Author: Jesse Burt
+    Description: Low-level constants
+    Copyright (c) 2021
     Started Jul 27, 2020
-    Updated Jul 27, 2020
+    Updated Feb 15, 2021
     See end of file for terms of use.
     --------------------------------------------
 }
@@ -14,6 +14,9 @@ CON
 
     I2C_MAX_FREQ        = 1_000_000
     SLAVE_ADDR          = $70 << 1
+
+    T_POR               = 240                   ' usec
+    DEVID_RESP          = $0807
 
 ' Register definitions
 
