@@ -10,6 +10,7 @@ This is a P8X32A/Propeller, P2X8C4M64P/Propeller 2 driver object for the Sensiri
 * I2C connection at up to 1MHz
 * Read raw or calculated temperature, relative humidity
 * Normal and low-power modes
+* Returned data is CRC-verified
 
 ## Requirements
 
@@ -31,9 +32,8 @@ P2/SPIN2:
 ## Limitations
 
 * Very early in development - may malfunction, or outright fail to build
-* Doesn't verify data CRC
 
 ## TODO
 
 - [x] Port to P2/SPIN2
-- [ ] Verify sensor data CRC
+- [x] Verify sensor data CRC
