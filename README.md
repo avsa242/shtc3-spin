@@ -7,7 +7,7 @@ This is a P8X32A/Propeller, P2X8C4M64P/Propeller 2 driver object for the Sensiri
 
 ## Salient Features
 
-* I2C connection at up to 1MHz
+* I2C connection at up to 1MHz (tested at max 760kHz)
 * Read raw or calculated temperature, relative humidity
 * Normal and low-power modes
 * Returned data is CRC-verified
@@ -36,5 +36,5 @@ P2/SPIN2:
 
 ## Limitations
 
-* Very early in development - may malfunction, or outright fail to build
+* TBD
 

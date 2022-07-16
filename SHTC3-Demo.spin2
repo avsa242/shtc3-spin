@@ -24,15 +24,15 @@ CON
     { I2C configuration }
     SCL_PIN     = 0
     SDA_PIN     = 1
-    I2C_FREQ    = 1_000_000
+    I2C_FREQ    = 760_000                       ' max is 1_000_000
     ADDR_BITS   = 0
 ' --
 
 OBJ
 
-    cfg: "core.con.boardcfg.p2eval"
-    sensr: "sensor.temp_rh.shtc3"
-    ser: "com.serial.terminal.ansi"
+    cfg:    "core.con.boardcfg.p2eval"
+    sensr:  "sensor.temp_rh.shtc3"
+    ser:    "com.serial.terminal.ansi"
 
 PUB Setup()
 
