@@ -6,7 +6,7 @@
         Temperature/RH sensor
     Copyright (c) 2022
     Started Jul 27, 2020
-    Updated May 13, 2022
+    Updated Sep 22, 2022
     See end of file for terms of use.
     --------------------------------------------
 }
@@ -43,14 +43,14 @@ OBJ
     time: "time"                                ' timekeeping methods
     crc : "math.crc"                            ' crc algorithms
 
-PUB Null{}
+PUB null{}
 ' This is not a top-level object
 
-PUB Start{}: status
+PUB start{}: status
 ' Start using "standard" Propeller I2C pins and 100kHz
     return startx(DEF_SCL, DEF_SDA, DEF_HZ)
 
-PUB Startx(SCL_PIN, SDA_PIN, I2C_HZ): status
+PUB startx(SCL_PIN, SDA_PIN, I2C_HZ): status
 ' Start using custom I/O settings and I2C bus speed
     if lookdown(SCL_PIN: 0..31) and lookdown(SDA_PIN: 0..31) and {
 }   I2C_HZ =< core#I2C_MAX_FREQ
@@ -65,20 +65,21 @@ PUB Startx(SCL_PIN, SDA_PIN, I2C_HZ): status
     ' Lastly - make sure you have at least one free core/cog
     return FALSE
 
-PUB Stop{}
-
+PUB stop{}
+' Stop the driver
     i2c.deinit{}
+    _opmode :=  0
 
-PUB Defaults{}
+PUB defaults{}
 ' Set factory defaults
 
-PUB DeviceID{}: id
+PUB deviceid{}: id
 ' Read device identification
 '   Returns: $0807
     readreg(core#DEVID, 2, @id)
     id &= $083F                                 ' only some bits are relevant
 
-PUB OpMode(mode): curr_mode
+PUB opmode(mode): curr_mode
 ' Set device operating mode
 '   Valid values: NORMAL (0), LOWPOWER (1)
 '   Any other value returns the current setting
@@ -88,13 +89,13 @@ PUB OpMode(mode): curr_mode
         other:
             return _opmode
 
-PUB Reset{}
+PUB reset{}
 ' Reset the device
     writereg(core#WAKEUP, 0, 0)                 ' avoid NAK from sensor when
     writereg(core#RESET, 0, 0)                  '   sending reset
     time.usleep(core#T_POR)
 
-PUB RHData{}: rh_adc
+PUB rhdata{}: rh_adc
 ' Read relative humidity data
 '   Returns: u16
     rh_adc := 0
@@ -108,12 +109,12 @@ PUB RHData{}: rh_adc
 
     writereg(core#SLEEP, 0, 0)                  ' Go back to sleep
 
-PUB RHWord2Pct(rh_word): rh_cal
+PUB rhword2pct(rh_word): rh_cal
 ' Convert RH ADC word to hundredths of a percent
 '   Returns: 0..100_00
     return (rh_word * 100_00) / 65535
 
-PUB TempData{}: temp_adc | tmp
+PUB tempdata{}: temp_adc | tmp
 ' Read temperature data
 '   Returns: s16
     temp_adc := 0
@@ -127,7 +128,7 @@ PUB TempData{}: temp_adc | tmp
 
     writereg(core#SLEEP, 0, 0)                  ' Go back to sleep
 
-PUB TempWord2Deg(temp_word): temp_cal
+PUB tempword2deg(temp_word): temp_cal
 ' Convert temperature ADC word to degrees
 '   Returns: hundredths of a degree, in chosen scale
     case _temp_scale
@@ -138,7 +139,7 @@ PUB TempWord2Deg(temp_word): temp_cal
         other:
             return FALSE
 
-PRI readReg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt, tmp, crc_r
+PRI readreg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt, tmp, crc_r
 ' Read nr_bytes from the slave device into ptr_buff
     tmp := 0
     case reg_nr                                 ' validate reg num
@@ -196,7 +197,7 @@ PRI readReg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt, tmp, crc_r
         other:
             return
 
-PRI writeReg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt
+PRI writereg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt
 ' Write nr_bytes to the slave device from ptr_buff
     case reg_nr
         core#WAKEUP, core#RESET, core#SLEEP:
@@ -211,22 +212,22 @@ PRI writeReg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt
 
 DAT
 {
-    --------------------------------------------------------------------------------------------------------
-    TERMS OF USE: MIT License
+Copyright 2022 Jesse Burt
 
-    Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
-    associated documentation files (the "Software"), to deal in the Software without restriction, including
-    without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-    copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the
-    following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-    The above copyright notice and this permission notice shall be included in all copies or substantial
-    portions of the Software.
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
 
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
-    LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-    IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-    SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-    --------------------------------------------------------------------------------------------------------
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
+OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 }
+
