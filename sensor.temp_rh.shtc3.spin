@@ -6,7 +6,7 @@
         Temperature/RH sensor
     Copyright (c) 2022
     Started Jul 27, 2020
-    Updated Sep 25, 2022
+    Updated Oct 16, 2022
     See end of file for terms of use.
     --------------------------------------------
 }
@@ -158,7 +158,7 @@ PRI readreg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt, tmp, crc_r
             i2c.stop{}
             crc_r := tmp.byte[0]                ' crc read in for data
             tmp >>= 8                           ' chop it off of the data
-            if crc.sensirioncrc8(@tmp, 2) == crc_r
+            if crc.sensirion_crc8(@tmp, 2) == crc_r
                 long[ptr_buff] := tmp
         $401A, $58E0, $609C, $7866:             ' meas. without clock-stretch
             cmd_pkt.byte[0] := SLAVE_WR
@@ -175,7 +175,7 @@ PRI readreg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt, tmp, crc_r
             time.msleep(1)
             crc_r := tmp.byte[0]                ' crc read in for data
             tmp >>= 8                           ' chop it off of the data
-            if crc.sensirioncrc8(@tmp, 2) == crc_r
+            if crc.sensirion_crc8(@tmp, 2) == crc_r
                 long[ptr_buff] := tmp
         core#DEVID:
             cmd_pkt.byte[0] := SLAVE_WR
@@ -192,7 +192,7 @@ PRI readreg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt, tmp, crc_r
             i2c.stop{}
             crc_r := tmp.byte[0]                ' crc read in for data
             tmp >>= 8                           ' chop it off of the data
-            if crc.sensirioncrc8(@tmp, 2) == crc_r
+            if crc.sensirion_crc8(@tmp, 2) == crc_r
                 long[ptr_buff] := tmp
         other:
             return
