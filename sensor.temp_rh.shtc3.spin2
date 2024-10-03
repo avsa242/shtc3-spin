@@ -1,65 +1,84 @@
 {
-    --------------------------------------------
-    Filename: sensor.temp_rh.shtc3.spin2
-    Author: Jesse Burt
-    Description: Driver for the Sensirion SHT-C3
-        Temperature/RH sensor (P2 version)
-    Copyright (c) 2022
-    Started Jul 27, 2020
-    Updated Dec 28, 2022
-    See end of file for terms of use.
-    --------------------------------------------
+----------------------------------------------------------------------------------------------------
+    Filename:       sensor.temp_rh.shtc3.spin2
+    Description:    Driver for the Sensirion SHT-C3 Temperature/RH sensor
+    Author:         Jesse Burt
+    Started:        Jul 27, 2020
+    Updated:        Oct 3, 2024
+    Copyright (c) 2024 - See end of file for terms of use.
+----------------------------------------------------------------------------------------------------
 }
-{ pull in methods common to all Temp/RH drivers }
-#include "sensor.temp_rh.common.spin2h"
+
+#include "sensor.temp_rh.common.spin2h"         ' use code common to all temp/rh drivers
 
 CON
 
-    { I2C }
-    SLAVE_WR        = core#SLAVE_ADDR
-    SLAVE_RD        = core#SLAVE_ADDR | 1
-    DEF_SCL         = 28
-    DEF_SDA         = 29
-    DEF_HZ          = 100_000
+    { default I/O settings; these can be overridden in the parent object }
+    SCL         = 0
+    SDA         = 1
+    I2C_FREQ    = 100_000
+    I2C_ADDR    = 0
 
 
 ' Operating modes
-    NORMAL          = 0
-    LOWPOWER        = 1
+    NORMAL      = 0
+    LOWPOWER    = 1
+
+
+    SLAVE_WR    = core.SLAVE_ADDR
+    SLAVE_RD    = core.SLAVE_ADDR | 1
+
 
 VAR
 
     byte _opmode
 
+
 OBJ
 
-    i2c : "com.i2c"                             ' I2C engine
-    core: "core.con.shtc3"                      ' hw-specific constants
-    crc : "math.crc"                            ' crc algorithms
+    i2c:    "com.i2c"                           ' I2C engine
+    core:   "core.con.shtc3"                    ' hw-specific constants
+    crc:    "math.crc"                          ' crc algorithms
+
 
 PUB null()
 ' This is not a top-level object
 
-PUB startx(SCL_PIN, SDA_PIN, I2C_HZ=DEF_HZ): status
-' Start using custom I/O settings and I2C bus speed
-    if (lookdown(SCL_PIN: 0..63) and lookdown(SDA_PIN: 0..63) and I2C_HZ <= core.I2C_MAX_FREQ)
-        if (status := i2c.init(SCL_PIN, SDA_PIN, I2C_HZ))
+
+PUB start(): status
+' Start using default I/O settings
+    return startx(SCL, SDA, I2C_FREQ)
+
+
+PUB startx(SCL_PIN, SDA_PIN, I2C_HZ): status
+' Start the driver with custom I/O settings
+'   SCL_PIN:    I2C clock, 0..63
+'   SDA_PIN:    I2C data, 0..63
+'   I2C_HZ:     I2C clock speed (max official specification is 1_000_000 but is unenforced)
+'   Returns:
+'       cog ID+1 of I2C engine on success (= calling cog ID+1, if the bytecode I2C engine is used)
+'       0 on failure
+    if ( lookdown(SCL_PIN: 0..63) and lookdown(SDA_PIN: 0..63) )
+        if ( status := i2c.init(SCL_PIN, SDA_PIN, I2C_HZ) )
             waitus(core.T_POR)                  ' wait for device startup
             reset()
-            if (dev_id() == core.DEVID_RESP)    ' validate device
+            if ( dev_id() == core.DEVID_RESP )  ' validate device
                 return status
     ' if this point is reached, something above failed
     ' Double check I/O pin assignments, connections, power
     ' Lastly - make sure you have at least one free core/cog
     return FALSE
 
+
 PUB stop()
 ' Stop the driver
     i2c.deinit()
     _opmode := 0
 
+
 PUB defaults()
 ' Set factory defaults
+
 
 PUB dev_id(): id
 ' Read device identification
@@ -67,8 +86,10 @@ PUB dev_id(): id
     readreg(core.DEVID, 2, @id)
     id &= $083F                                 ' only some bits are relevant
 
+
 PUB measure()
 ' dummy method
+
 
 PUB opmode(mode): curr_mode
 ' Set device operating mode
@@ -80,44 +101,49 @@ PUB opmode(mode): curr_mode
         other:
             return _opmode
 
+
 PUB reset()
 ' Reset the device
-    writereg(core.WAKEUP, 0, 0)                 ' avoid NAK from sensor when
-    writereg(core.RESET, 0, 0)                  '   sending reset
+    cmd(core.WAKEUP)                            ' avoid NAK from sensor when
+    cmd(core.RESET)                             '   sending reset
     waitus(core.T_POR)
+
 
 PUB rh_data(): rh_adc
 ' Read relative humidity data
 '   Returns: u16
     rh_adc := 0
-    writereg(core.WAKEUP, 0, 0)                 ' Wake the sensor up
+    cmd(core.WAKEUP)                            ' Wake the sensor up
     waitus(core.T_POR)
 
-    if _opmode == NORMAL                        ' Take a measurement
+    if ( _opmode == NORMAL )                    ' Take a measurement
         readreg(core.NML_RHFIRST_CS, 3, @rh_adc)
-    elseif _opmode == LOWPOWER
+    elseif ( _opmode == LOWPOWER )
         readreg(core.LP_RHFIRST_CS, 3, @rh_adc)
 
-    writereg(core.SLEEP, 0, 0)                  ' Go back to sleep
+    cmd(core.SLEEP)                             ' Go back to sleep
+
 
 PUB rh_word2pct(rh_word): rh_cal
 ' Convert RH ADC word to hundredths of a percent
 '   Returns: 0..100_00
     return (rh_word * 100_00) / 65535
 
+
 PUB temp_data(): temp_adc
 ' Read temperature data
 '   Returns: s16
     temp_adc := 0
-    writereg(core.WAKEUP, 0, 0)                 ' Wake the sensor up
+    cmd(core.WAKEUP)                            ' Wake the sensor up
     waitus(core.T_POR)
 
-    if (_opmode == NORMAL)                      ' Take a measurement
+    if ( _opmode == NORMAL )                    ' Take a measurement
         readreg(core.NML_TEMPFIRST_CS, 3, @temp_adc)
-    elseif (_opmode == LOWPOWER)
+    elseif ( _opmode == LOWPOWER )
         readreg(core.LP_TEMPFIRST_CS, 3, @temp_adc)
 
-    writereg(core.SLEEP, 0, 0)                  ' Go back to sleep
+    cmd(core.SLEEP)                             ' Go back to sleep
+
 
 PUB temp_word2deg(temp_word): temp_cal
 ' Convert temperature ADC word to degrees
@@ -129,6 +155,7 @@ PUB temp_word2deg(temp_word): temp_cal
             return ((315 * (temp_word * 100)) / 65535)-49_00
         other:
             return FALSE
+
 
 
 PRI readreg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt, tmp, crc_r
@@ -150,7 +177,7 @@ PRI readreg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt, tmp, crc_r
             i2c.stop()
             crc_r := tmp.byte[0]                ' crc read in for data
             tmp >>= 8                           ' chop it off of the data
-            if crc.sensirion_crc8(@tmp, 2) == crc_r
+            if ( crc.sensirion_crc8(@tmp, 2) == crc_r )
                 long[ptr_buff] := tmp
         $401A, $58E0, $609C, $7866:             ' meas. without clock-stretch
             cmd_pkt.byte[0] := SLAVE_WR
@@ -167,7 +194,7 @@ PRI readreg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt, tmp, crc_r
             waitms(1)
             crc_r := tmp.byte[0]                ' crc read in for data
             tmp >>= 8                           ' chop it off of the data
-            if crc.sensirion_crc8(@tmp, 2) == crc_r
+            if ( crc.sensirion_crc8(@tmp, 2) == crc_r )
                 long[ptr_buff] := tmp
         core.DEVID:
             cmd_pkt.byte[0] := SLAVE_WR
@@ -184,13 +211,14 @@ PRI readreg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt, tmp, crc_r
             i2c.stop()
             crc_r := tmp.byte[0]                ' crc read in for data
             tmp >>= 8                           ' chop it off of the data
-            if crc.sensirion_crc8(@tmp, 2) == crc_r
+            if ( crc.sensirion_crc8(@tmp, 2) == crc_r )
                 long[ptr_buff] := tmp
         other:
             return
 
-PRI writereg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt
-' Write nr_bytes to the slave device from ptr_buff
+
+PRI cmd(reg_nr) | cmd_pkt
+' Issue command to the device
     case reg_nr
         core.WAKEUP, core.RESET, core.SLEEP:
             cmd_pkt.byte[0] := SLAVE_WR
@@ -202,9 +230,10 @@ PRI writereg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt
         other:
             return
 
+
 DAT
 {
-Copyright 2022 Jesse Burt
+Copyright 2024 Jesse Burt
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
 associated documentation files (the "Software"), to deal in the Software without restriction,
@@ -220,6 +249,5 @@ NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPO
 NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
 DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 }
 

@@ -1,84 +1,101 @@
 {
-    --------------------------------------------
-    Filename: sensor.temp_rh.shtc3.spin
-    Author: Jesse Burt
-    Description: Driver for the Sensirion SHT-C3
-        Temperature/RH sensor
-    Copyright (c) 2022
-    Started Jul 27, 2020
-    Updated Dec 28, 2022
-    See end of file for terms of use.
-    --------------------------------------------
+----------------------------------------------------------------------------------------------------
+    Filename:       sensor.temp_rh.shtc3.spin
+    Description:    Driver for the Sensirion SHT-C3 Temperature/RH sensor
+    Author:         Jesse Burt
+    Started:        Jul 27, 2020
+    Updated:        Oct 3, 2024
+    Copyright (c) 2024 - See end of file for terms of use.
+----------------------------------------------------------------------------------------------------
 }
-{ pull in methods common to all Temp/RH drivers }
-#include "sensor.temp_rh.common.spinh"
+
+#include "sensor.temp_rh.common.spinh"          ' use code common to all temp/rh drivers
 
 CON
 
-    { I2C }
-    SLAVE_WR        = core#SLAVE_ADDR
-    SLAVE_RD        = core#SLAVE_ADDR | 1
-    DEF_SCL         = 28
-    DEF_SDA         = 29
-    DEF_HZ          = 100_000
+    { default I/O settings; these can be overridden in the parent object }
+    SCL         = 28
+    SDA         = 29
+    I2C_FREQ    = 100_000
+    I2C_ADDR    = 0
 
 
 ' Operating modes
-    NORMAL          = 0
-    LOWPOWER        = 1
+    NORMAL      = 0
+    LOWPOWER    = 1
+
+
+    SLAVE_WR    = core.SLAVE_ADDR
+    SLAVE_RD    = core.SLAVE_ADDR | 1
+
 
 VAR
 
     byte _opmode
 
+
 OBJ
 
 { decide: Bytecode I2C engine, or PASM? Default is PASM if BC isn't specified }
 #ifdef SHTC3_I2C_BC
-    i2c : "com.i2c.nocog"                       ' BC I2C engine
+    i2c:    "com.i2c.nocog"                     ' BC I2C engine
 #else
-    i2c : "com.i2c"                             ' PASM I2C engine
+    i2c:    "com.i2c"                           ' PASM I2C engine
 #endif
-    core: "core.con.shtc3"                      ' hw-specific constants
-    time: "time"                                ' timekeeping methods
-    crc : "math.crc"                            ' crc algorithms
+    core:   "core.con.shtc3"                    ' hw-specific constants
+    time:   "time"                              ' timekeeping methods
+    crc:    "math.crc"                          ' crc algorithms
 
-PUB null{}
+
+PUB null()
 ' This is not a top-level object
 
-PUB start{}: status
-' Start using "standard" Propeller I2C pins and 100kHz
-    return startx(DEF_SCL, DEF_SDA, DEF_HZ)
+
+PUB start(): status
+' Start using default I/O settings
+    return startx(SCL, SDA, I2C_FREQ)
+
 
 PUB startx(SCL_PIN, SDA_PIN, I2C_HZ): status
-' Start using custom I/O settings and I2C bus speed
-    if (lookdown(SCL_PIN: 0..31) and lookdown(SDA_PIN: 0..31) and I2C_HZ =< core#I2C_MAX_FREQ)
-        if (status := i2c.init(SCL_PIN, SDA_PIN, I2C_HZ))
-            time.usleep(core#T_POR)             ' wait for device startup
-            reset{}
-            if (dev_id{} == core#DEVID_RESP)    ' validate device
+' Start the driver with custom I/O settings
+'   SCL_PIN:    I2C clock, 0..31
+'   SDA_PIN:    I2C data, 0..31
+'   I2C_HZ:     I2C clock speed (max official specification is 1_000_000 but is unenforced)
+'   Returns:
+'       cog ID+1 of I2C engine on success (= calling cog ID+1, if the bytecode I2C engine is used)
+'       0 on failure
+    if ( lookdown(SCL_PIN: 0..31) and lookdown(SDA_PIN: 0..31) )
+        if ( status := i2c.init(SCL_PIN, SDA_PIN, I2C_HZ) )
+            time.usleep(core.T_POR)             ' wait for device startup
+            reset()
+            if ( dev_id() == core.DEVID_RESP )  ' validate device
                 return status
     ' if this point is reached, something above failed
     ' Double check I/O pin assignments, connections, power
     ' Lastly - make sure you have at least one free core/cog
     return FALSE
 
-PUB stop{}
+
+PUB stop()
 ' Stop the driver
-    i2c.deinit{}
+    i2c.deinit()
     _opmode := 0
 
-PUB defaults{}
+
+PUB defaults()
 ' Set factory defaults
 
-PUB dev_id{}: id
+
+PUB dev_id(): id
 ' Read device identification
 '   Returns: $0807
-    readreg(core#DEVID, 2, @id)
+    readreg(core.DEVID, 2, @id)
     id &= $083F                                 ' only some bits are relevant
 
-PUB measure{}
+
+PUB measure()
 ' dummy method
+
 
 PUB opmode(mode): curr_mode
 ' Set device operating mode
@@ -90,44 +107,49 @@ PUB opmode(mode): curr_mode
         other:
             return _opmode
 
-PUB reset{}
-' Reset the device
-    writereg(core#WAKEUP, 0, 0)                 ' avoid NAK from sensor when
-    writereg(core#RESET, 0, 0)                  '   sending reset
-    time.usleep(core#T_POR)
 
-PUB rh_data{}: rh_adc
+PUB reset()
+' Reset the device
+    cmd(core.WAKEUP)                            ' avoid NAK from sensor when
+    cmd(core.RESET)                             '   sending reset
+    time.usleep(core.T_POR)
+
+
+PUB rh_data(): rh_adc
 ' Read relative humidity data
 '   Returns: u16
     rh_adc := 0
-    writereg(core#WAKEUP, 0, 0)                 ' Wake the sensor up
-    time.usleep(core#T_POR)
+    cmd(core.WAKEUP)                            ' Wake the sensor up
+    time.usleep(core.T_POR)
 
-    if _opmode == NORMAL                        ' Take a measurement
-        readreg(core#NML_RHFIRST_CS, 3, @rh_adc)
-    elseif _opmode == LOWPOWER
-        readreg(core#LP_RHFIRST_CS, 3, @rh_adc)
+    if ( _opmode == NORMAL )                    ' Take a measurement
+        readreg(core.NML_RHFIRST_CS, 3, @rh_adc)
+    elseif ( _opmode == LOWPOWER )
+        readreg(core.LP_RHFIRST_CS, 3, @rh_adc)
 
-    writereg(core#SLEEP, 0, 0)                  ' Go back to sleep
+    cmd(core.SLEEP)                             ' Go back to sleep
+
 
 PUB rh_word2pct(rh_word): rh_cal
 ' Convert RH ADC word to hundredths of a percent
 '   Returns: 0..100_00
     return (rh_word * 100_00) / 65535
 
-PUB temp_data{}: temp_adc | tmp
+
+PUB temp_data(): temp_adc
 ' Read temperature data
 '   Returns: s16
     temp_adc := 0
-    writereg(core#WAKEUP, 0, 0)                 ' Wake the sensor up
-    time.usleep(core#T_POR)
+    cmd(core.WAKEUP)                            ' Wake the sensor up
+    time.usleep(core.T_POR)
 
-    if (_opmode == NORMAL)                      ' Take a measurement
-        readreg(core#NML_TEMPFIRST_CS, 3, @temp_adc)
-    elseif (_opmode == LOWPOWER)
-        readreg(core#LP_TEMPFIRST_CS, 3, @temp_adc)
+    if ( _opmode == NORMAL )                    ' Take a measurement
+        readreg(core.NML_TEMPFIRST_CS, 3, @temp_adc)
+    elseif ( _opmode == LOWPOWER )
+        readreg(core.LP_TEMPFIRST_CS, 3, @temp_adc)
 
-    writereg(core#SLEEP, 0, 0)                  ' Go back to sleep
+    cmd(core.SLEEP)                             ' Go back to sleep
+
 
 PUB temp_word2deg(temp_word): temp_cal
 ' Convert temperature ADC word to degrees
@@ -140,6 +162,7 @@ PUB temp_word2deg(temp_word): temp_cal
         other:
             return FALSE
 
+
 PRI readreg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt, tmp, crc_r
 ' Read nr_bytes from the slave device into ptr_buff
     tmp := 0
@@ -149,71 +172,73 @@ PRI readreg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt, tmp, crc_r
             cmd_pkt.byte[1] := reg_nr.byte[1]
             cmd_pkt.byte[2] := reg_nr.byte[0]
 
-            i2c.start{}                         ' Send measurement command
+            i2c.start()                         ' Send measurement command
             i2c.wrblock_lsbf(@cmd_pkt, 3)
-            i2c.stop{}
+            i2c.stop()
 
-            i2c.start{}                         ' read measurement
+            i2c.start()                         ' read measurement
             i2c.write(SLAVE_RD)
-            i2c.rdblock_msbf(@tmp, nr_bytes, i2c#NAK)
-            i2c.stop{}
+            i2c.rdblock_msbf(@tmp, nr_bytes, i2c.NAK)
+            i2c.stop()
             crc_r := tmp.byte[0]                ' crc read in for data
             tmp >>= 8                           ' chop it off of the data
-            if crc.sensirion_crc8(@tmp, 2) == crc_r
+            if ( crc.sensirion_crc8(@tmp, 2) == crc_r )
                 long[ptr_buff] := tmp
         $401A, $58E0, $609C, $7866:             ' meas. without clock-stretch
             cmd_pkt.byte[0] := SLAVE_WR
             cmd_pkt.byte[1] := reg_nr.byte[1]
             cmd_pkt.byte[2] := reg_nr.byte[0]
 
-            i2c.start{}
+            i2c.start()
             i2c.wrblock_lsbf(@cmd_pkt, 3)
-            i2c.stop{}
+            i2c.stop()
 
             i2c.wait(SLAVE_RD)
-            i2c.rdblock_msbf(@tmp, nr_bytes, i2c#NAK)
-            i2c.stop{}
+            i2c.rdblock_msbf(@tmp, nr_bytes, i2c.NAK)
+            i2c.stop()
             time.msleep(1)
             crc_r := tmp.byte[0]                ' crc read in for data
             tmp >>= 8                           ' chop it off of the data
-            if crc.sensirion_crc8(@tmp, 2) == crc_r
+            if ( crc.sensirion_crc8(@tmp, 2) == crc_r )
                 long[ptr_buff] := tmp
-        core#DEVID:
+        core.DEVID:
             cmd_pkt.byte[0] := SLAVE_WR
             cmd_pkt.byte[1] := reg_nr.byte[1]
             cmd_pkt.byte[2] := reg_nr.byte[0]
 
-            i2c.start{}
+            i2c.start()
             i2c.wrblock_lsbf(@cmd_pkt, 3)
-            i2c.stop{}
+            i2c.stop()
 
-            i2c.start{}
+            i2c.start()
             i2c.write(SLAVE_RD)
-            i2c.rdblock_msbf(@tmp, 3, i2c#NAK)
-            i2c.stop{}
+            i2c.rdblock_msbf(@tmp, 3, i2c.NAK)
+            i2c.stop()
             crc_r := tmp.byte[0]                ' crc read in for data
             tmp >>= 8                           ' chop it off of the data
-            if crc.sensirion_crc8(@tmp, 2) == crc_r
+            if ( crc.sensirion_crc8(@tmp, 2) == crc_r )
                 long[ptr_buff] := tmp
         other:
             return
 
-PRI writereg(reg_nr, nr_bytes, ptr_buff) | cmd_pkt
-' Write nr_bytes to the slave device from ptr_buff
+
+PRI cmd(reg_nr) | cmd_pkt
+' Issue command to the device
     case reg_nr
-        core#WAKEUP, core#RESET, core#SLEEP:
+        core.WAKEUP, core.RESET, core.SLEEP:
             cmd_pkt.byte[0] := SLAVE_WR
             cmd_pkt.byte[1] := reg_nr.byte[1]
             cmd_pkt.byte[2] := reg_nr.byte[0]
-            i2c.start{}
+            i2c.start()
             i2c.wrblock_lsbf(@cmd_pkt, 3)
-            i2c.stop{}
+            i2c.stop()
         other:
             return
+
 
 DAT
 {
-Copyright 2022 Jesse Burt
+Copyright 2024 Jesse Burt
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
 associated documentation files (the "Software"), to deal in the Software without restriction,
@@ -229,6 +254,5 @@ NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPO
 NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
 DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
 OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 }
 
