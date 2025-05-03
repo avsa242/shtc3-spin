@@ -167,35 +167,11 @@ PRI readreg(reg_nr, len=1): v | cmd_pkt, tmp, crc_r
     tmp := 0
     case reg_nr                                 ' validate reg num
         $44DE, $5C24, $6458, $7CA2:             ' meas. with clock-stretching
-            cmd_pkt.byte[0] := SLAVE_WR
-            cmd_pkt.byte[1] := reg_nr.byte[1]
-            cmd_pkt.byte[2] := reg_nr.byte[0]
-
-            i2c.start()                         ' Send measurement command
-            i2c.wrblock_lsbf(@cmd_pkt, 3)
-            i2c.stop()
-
+            cmd(reg_nr)
             i2c.start()                         ' read measurement
             i2c.write(SLAVE_RD)
             i2c.rdblock_msbf(@tmp, len, i2c.NAK)
             i2c.stop()
-            crc_r := tmp.byte[0]                ' crc read in for data
-            tmp >>= 8                           ' chop it off of the data
-            if ( crc.sensirion_crc8(@tmp, 2) == crc_r )
-                return tmp
-        $401A, $58E0, $609C, $7866:             ' meas. without clock-stretch
-            cmd_pkt.byte[0] := SLAVE_WR
-            cmd_pkt.byte[1] := reg_nr.byte[1]
-            cmd_pkt.byte[2] := reg_nr.byte[0]
-
-            i2c.start()
-            i2c.wrblock_lsbf(@cmd_pkt, 3)
-            i2c.stop()
-
-            i2c.wait(SLAVE_RD)
-            i2c.rdblock_msbf(@tmp, len, i2c.NAK)
-            i2c.stop()
-            time.msleep(1)
             crc_r := tmp.byte[0]                ' crc read in for data
             tmp >>= 8                           ' chop it off of the data
             if ( crc.sensirion_crc8(@tmp, 2) == crc_r )
@@ -224,7 +200,9 @@ PRI readreg(reg_nr, len=1): v | cmd_pkt, tmp, crc_r
 PRI cmd(reg_nr) | cmd_pkt
 ' Issue command to the device
     case reg_nr
-        core.WAKEUP, core.RESET, core.SLEEP:
+        core.WAKEUP, core.RESET, core.SLEEP, ...
+        core.LP_RHFIRST_CS, core.NML_RHFIRST_CS, core.LP_TEMPFIRST_CS, core.NML_TEMPFIRST_CS, ...
+        core.LP_RHFIRST, core.NML_RHFIRST, core.LP_TEMPFIRST, core.NML_TEMPFIRST:
             cmd_pkt.byte[0] := SLAVE_WR
             cmd_pkt.byte[1] := reg_nr.byte[1]
             cmd_pkt.byte[2] := reg_nr.byte[0]
